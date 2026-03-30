@@ -1,0 +1,8 @@
+.cursor/skills/
+.cursor/mcp.json
+AGENTS.md
+dogfood-output/
+*.log
+playwright-report/
+status.md
+loop.log
