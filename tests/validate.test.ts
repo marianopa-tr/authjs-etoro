@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { generateKeyPair, exportJWK, SignJWT } from "jose";
+import { generateKeyPair, exportJWK, SignJWT, jwtVerify } from "jose";
 import { http, HttpResponse } from "msw";
 import { validateIdToken, _resetCache } from "../src/validate.js";
 import { server } from "./server.js";
@@ -10,6 +10,11 @@ import {
   createExpiredToken,
   getTestJWKS,
 } from "./helpers.js";
+
+vi.mock("jose", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("jose")>();
+  return { ...mod, jwtVerify: vi.fn(mod.jwtVerify) };
+});
 
 afterEach(() => {
   _resetCache();
@@ -203,17 +208,12 @@ describe("non-jose error wrapping", () => {
   });
 
   it("wraps non-Error thrown values with String conversion", async () => {
-    const jose = await import("jose");
-    const originalJwtVerify = jose.jwtVerify;
-    vi.spyOn(jose, "jwtVerify").mockRejectedValueOnce("raw string error");
+    vi.mocked(jwtVerify).mockRejectedValueOnce("raw string error");
 
-    try {
-      await expect(
-        validateIdToken("fake.jwt.token", TEST_CLIENT_ID),
-      ).rejects.toThrow(/^authjs-etoro:.*raw string error/);
-    } finally {
-      vi.mocked(jose.jwtVerify).mockRestore();
-    }
+    const token = await createTestIdToken();
+    await expect(
+      validateIdToken(token, TEST_CLIENT_ID),
+    ).rejects.toThrow(/^authjs-etoro:.*raw string error/);
   });
 });
 
