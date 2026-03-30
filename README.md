@@ -129,6 +129,24 @@ import { validateIdToken, _resetCache, type EToroProfile } from "authjs-etoro";
 - **`_resetCache()`** — Clears the internal JWKS cache. For testing only.
 - **`EToroProfile`** — TypeScript interface for the decoded id_token payload.
 
+#### `validateIdToken` options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `clockTolerance` | `number` | `120` | Seconds of tolerance for token expiration checks |
+| `jwksUrl` | `string` | `https://www.etoro.com/.well-known/jwks.json` | JWKS endpoint URL |
+| `issuer` | `string` | `https://www.etoro.com` | Expected `iss` claim value |
+
+```ts
+import { validateIdToken } from "authjs-etoro";
+
+const profile = await validateIdToken(idToken, clientId, {
+  jwksUrl: "https://staging.etoro.com/.well-known/jwks.json",
+  issuer: "https://staging.etoro.com",
+  clockTolerance: 300,
+});
+```
+
 ### `EToroProfile` shape
 
 ```ts
