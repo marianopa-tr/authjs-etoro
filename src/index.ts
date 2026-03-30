@@ -63,6 +63,7 @@ export default function eToro(
       };
     },
     checks: ["pkce", "state"],
+    style: { bg: "#6ca843", text: "#fff", brandColor: "#6ca843" },
     options,
   };
 }

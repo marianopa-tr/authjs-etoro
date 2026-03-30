@@ -47,6 +47,18 @@ describe("eToro provider factory", () => {
     expect(provider.checks).toContain("state");
   });
 
+  it("has style with eToro branding", () => {
+    const style = provider.style as {
+      bg: string;
+      text: string;
+      brandColor: string;
+    };
+    expect(style).toBeDefined();
+    expect(style.bg).toBe("#6ca843");
+    expect(style.text).toBe("#fff");
+    expect(style.brandColor).toBe("#6ca843");
+  });
+
   it("has userinfo.request function", () => {
     const userinfo = provider.userinfo as {
       request: (...args: unknown[]) => unknown;
