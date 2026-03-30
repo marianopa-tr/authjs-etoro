@@ -6,14 +6,15 @@ export const JWKS_URL = "https://www.etoro.com/.well-known/jwks.json";
 
 const TEST_KID = "test-key-1";
 
-let cachedKeyPair: { publicKey: CryptoKey; privateKey: CryptoKey } | null =
-  null;
+let keyPairPromise: Promise<
+  CryptoKeyPair & { publicKey: CryptoKey; privateKey: CryptoKey }
+> | null = null;
 
-export async function getTestKeyPair() {
-  if (!cachedKeyPair) {
-    cachedKeyPair = await generateKeyPair("RS256");
+export function getTestKeyPair() {
+  if (!keyPairPromise) {
+    keyPairPromise = generateKeyPair("RS256");
   }
-  return cachedKeyPair;
+  return keyPairPromise;
 }
 
 export async function getTestJWKS() {
