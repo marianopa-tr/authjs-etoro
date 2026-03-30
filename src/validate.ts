@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { createRemoteJWKSet, errors, jwtVerify } from "jose";
 import type { EToroProfile } from "./types.js";
 
 const DEFAULT_JWKS_URL = "https://www.etoro.com/.well-known/jwks.json";
@@ -46,12 +46,42 @@ export async function validateIdToken(
 
   const clockTolerance = options?.clockTolerance ?? DEFAULT_CLOCK_TOLERANCE;
 
-  const { payload } = await jwtVerify(idToken, getJWKS(options?.jwksUrl), {
-    issuer: options?.issuer ?? EXPECTED_ISSUER,
-    audience: clientId,
-    clockTolerance,
-    algorithms: ["RS256"],
-  });
+  let payload;
+  try {
+    const result = await jwtVerify(idToken, getJWKS(options?.jwksUrl), {
+      issuer: options?.issuer ?? EXPECTED_ISSUER,
+      audience: clientId,
+      clockTolerance,
+      algorithms: ["RS256"],
+    });
+    payload = result.payload;
+  } catch (error) {
+    if (error instanceof errors.JWTExpired) {
+      throw new Error("authjs-etoro: id_token has expired", { cause: error });
+    }
+    if (error instanceof errors.JWSSignatureVerificationFailed) {
+      throw new Error(
+        "authjs-etoro: id_token signature verification failed",
+        { cause: error },
+      );
+    }
+    if (error instanceof errors.JOSEAlgNotAllowed) {
+      throw new Error(
+        "authjs-etoro: id_token uses an unsupported algorithm — only RS256 is accepted",
+        { cause: error },
+      );
+    }
+    if (error instanceof errors.JOSEError) {
+      throw new Error(
+        `authjs-etoro: id_token validation failed — ${error.message}`,
+        { cause: error },
+      );
+    }
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(`authjs-etoro: failed to validate id_token — ${msg}`, {
+      cause: error,
+    });
+  }
 
   if (!payload.sub) {
     throw new Error("authjs-etoro: id_token is missing the 'sub' claim");

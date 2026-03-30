@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { generateKeyPair, exportJWK, SignJWT } from "jose";
 import { http, HttpResponse } from "msw";
 import { validateIdToken, _resetCache } from "../src/validate.js";
@@ -8,6 +8,7 @@ import {
   JWKS_URL,
   createTestIdToken,
   createExpiredToken,
+  getTestJWKS,
 } from "./helpers.js";
 
 afterEach(() => {
@@ -52,25 +53,65 @@ describe("validateIdToken", () => {
     );
   });
 
-  it("rejects an expired token", async () => {
+  it("rejects an expired token with prefixed message", async () => {
     const token = await createExpiredToken();
-    await expect(validateIdToken(token, TEST_CLIENT_ID)).rejects.toThrow();
+    await expect(validateIdToken(token, TEST_CLIENT_ID)).rejects.toThrow(
+      /^authjs-etoro:.*expired/,
+    );
   });
 
-  it("rejects a token with wrong issuer", async () => {
+  it("rejects a token with wrong issuer with prefixed message", async () => {
     const token = await createTestIdToken({}, { issuer: "https://evil.com" });
-    await expect(validateIdToken(token, TEST_CLIENT_ID)).rejects.toThrow();
+    await expect(validateIdToken(token, TEST_CLIENT_ID)).rejects.toThrow(
+      /^authjs-etoro:/,
+    );
   });
 
-  it("rejects a token with wrong audience", async () => {
+  it("rejects a token with wrong audience with prefixed message", async () => {
     const token = await createTestIdToken({}, { audience: "wrong-client" });
-    await expect(validateIdToken(token, TEST_CLIENT_ID)).rejects.toThrow();
+    await expect(validateIdToken(token, TEST_CLIENT_ID)).rejects.toThrow(
+      /^authjs-etoro:/,
+    );
   });
 
   it("rejects a token missing the sub claim", async () => {
     const token = await createTestIdToken({}, { omitSub: true });
     await expect(validateIdToken(token, TEST_CLIENT_ID)).rejects.toThrow(
       "missing the 'sub' claim",
+    );
+  });
+
+  it("rejects a malformed/garbage token with prefixed message", async () => {
+    await expect(
+      validateIdToken("not-a-jwt", TEST_CLIENT_ID),
+    ).rejects.toThrow(/^authjs-etoro:/);
+  });
+
+  it("preserves the original jose error as cause", async () => {
+    const token = await createExpiredToken();
+    try {
+      await validateIdToken(token, TEST_CLIENT_ID);
+      expect.unreachable("should have thrown");
+    } catch (err) {
+      const error = err as Error;
+      expect(error.cause).toBeDefined();
+      expect(error.cause).toBeInstanceOf(Error);
+    }
+  });
+
+  it("rejects a token signed with a different key with prefixed message", async () => {
+    const { privateKey } = await generateKeyPair("RS256");
+
+    const token = await new SignJWT({ sub: "test-user" })
+      .setProtectedHeader({ alg: "RS256", kid: "test-key-1" })
+      .setIssuedAt()
+      .setIssuer("https://www.etoro.com")
+      .setAudience(TEST_CLIENT_ID)
+      .setExpirationTime("1h")
+      .sign(privateKey);
+
+    await expect(validateIdToken(token, TEST_CLIENT_ID)).rejects.toThrow(
+      /^authjs-etoro:.*signature/,
     );
   });
 });
@@ -128,7 +169,9 @@ describe("validateIdToken custom options", () => {
 
   it("rejects a token expired beyond default tolerance", async () => {
     const token = await createTestIdToken({}, { expiresInSeconds: -200 });
-    await expect(validateIdToken(token, TEST_CLIENT_ID)).rejects.toThrow();
+    await expect(validateIdToken(token, TEST_CLIENT_ID)).rejects.toThrow(
+      /^authjs-etoro:.*expired/,
+    );
   });
 
   it("accepts custom clockTolerance", async () => {
@@ -143,12 +186,39 @@ describe("validateIdToken custom options", () => {
     const token = await createTestIdToken({}, { expiresInSeconds: -1 });
     await expect(
       validateIdToken(token, TEST_CLIENT_ID, { clockTolerance: 0 }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/^authjs-etoro:.*expired/);
+  });
+});
+
+describe("non-jose error wrapping", () => {
+  it("wraps non-jose errors with prefixed message", async () => {
+    server.use(
+      http.get(JWKS_URL, () => HttpResponse.error()),
+    );
+
+    const token = await createTestIdToken();
+    await expect(validateIdToken(token, TEST_CLIENT_ID)).rejects.toThrow(
+      /^authjs-etoro:/,
+    );
+  });
+
+  it("wraps non-Error thrown values with String conversion", async () => {
+    const jose = await import("jose");
+    const originalJwtVerify = jose.jwtVerify;
+    vi.spyOn(jose, "jwtVerify").mockRejectedValueOnce("raw string error");
+
+    try {
+      await expect(
+        validateIdToken("fake.jwt.token", TEST_CLIENT_ID),
+      ).rejects.toThrow(/^authjs-etoro:.*raw string error/);
+    } finally {
+      vi.mocked(jose.jwtVerify).mockRestore();
+    }
   });
 });
 
 describe("algorithm restriction", () => {
-  it("rejects a PS256-signed token", async () => {
+  it("rejects a PS256-signed token with prefixed message", async () => {
     const { publicKey, privateKey } = await generateKeyPair("PS256");
     const jwk = await exportJWK(publicKey);
 
@@ -168,6 +238,8 @@ describe("algorithm restriction", () => {
       .setExpirationTime("1h")
       .sign(privateKey);
 
-    await expect(validateIdToken(token, TEST_CLIENT_ID)).rejects.toThrow();
+    await expect(validateIdToken(token, TEST_CLIENT_ID)).rejects.toThrow(
+      /^authjs-etoro:.*algorithm/,
+    );
   });
 });
