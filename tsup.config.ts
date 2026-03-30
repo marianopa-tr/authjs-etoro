@@ -16,8 +16,6 @@ export default defineConfig({
   dts: true,
   clean: true,
   sourcemap: false,
-  splitting: true,
-  treeshake: true,
   outDir: "dist",
   async onSuccess() {
     const { readFile, writeFile } = await import("node:fs/promises");
